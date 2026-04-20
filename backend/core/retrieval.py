@@ -54,7 +54,7 @@ def search_docs(query: str, top_k: int = 5, source_label: Optional[str] = None) 
                 type="docs",
                 title=f"{p.get('page_title', 'Untitled')} — {p.get('section_title', '')}".strip(" —"),
                 url=p.get("section_url", ""),
-                snippet=(p.get("chunk_text") or "")[:500],
+                snippet=p.get("chunk_text") or "",
                 score=float(point.score or 0.0),
             )
         )

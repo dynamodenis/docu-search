@@ -107,7 +107,7 @@ with search_tab:
                     with st.expander(f"[{i}] {s['title']}  (score {s['score']:.2f})"):
                         if s.get("url"):
                             st.markdown(f"[{s['url']}]({s['url']})")
-                        st.caption(s.get("snippet", ""))
+                        st.markdown(s.get("snippet", ""))
 
             if web_sources:
                 st.subheader("Web sources")
@@ -115,7 +115,7 @@ with search_tab:
                     with st.expander(f"[{i}] {s['title']}  (score {s['score']:.2f})"):
                         if s.get("url"):
                             st.markdown(f"[{s['url']}]({s['url']})")
-                        st.caption(s.get("snippet", ""))
+                        st.markdown(s.get("snippet", ""))
 
 # ------------------------------------------------------------------
 # INGEST
