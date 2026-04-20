@@ -34,12 +34,17 @@ def _build_points(chunks: List[Chunk], source_label: str):
     points = []
     for i, chunk in enumerate(chunks):
         sv = sparse[i].as_object()
+        # FastEmbed returns numpy arrays; SparseVector wants plain lists.
+        sparse_vec = models.SparseVector(
+            indices=sv["indices"].tolist(),
+            values=sv["values"].tolist(),
+        )
         points.append(
             models.PointStruct(
                 id=str(uuid.uuid4()),
                 vector={
                     "dense": dense[i].tolist(),
-                    "sparse": models.SparseVector(**sv),
+                    "sparse": sparse_vec,
                     "colbert": colbert[i].tolist(),
                 },
                 payload={
@@ -69,30 +74,67 @@ def run_ingest_job(
             job_store.update(job_id, status="failed", error="No URLs to ingest.")
             return
 
+        log.info(
+            "Ingest job %s starting: %d target URLs, label=%r",
+            job_id, len(targets), source_label,
+        )
+
         client = get_client()
         total_scraped = 0
         total_chunks = 0
+        failed_pages = 0
+        failed_batches = 0
 
-        for url in targets:
-            page = scrape_page(url)
+        for page_idx, url in enumerate(targets, 1):
+            try:
+                page = scrape_page(url)
+            except Exception:
+                log.exception("[job %s] scrape error on %s", job_id, url)
+                page = None
+
             total_scraped += 1
             if not page or not page.markdown.strip():
+                failed_pages += 1
+                log.info(
+                    "[job %s] (%d/%d) SKIP empty/failed: %s",
+                    job_id, page_idx, len(targets), url,
+                )
                 job_store.update(job_id, pages_scraped=total_scraped)
                 continue
 
             chunks = chunk_markdown(page.markdown, page_title=page.title, page_url=page.url)
             if not chunks:
+                log.info(
+                    "[job %s] (%d/%d) SKIP no chunks: %s",
+                    job_id, page_idx, len(targets), url,
+                )
                 job_store.update(job_id, pages_scraped=total_scraped)
                 continue
 
-            for i in range(0, len(chunks), UPSERT_BATCH):
+            total_batches = (len(chunks) + UPSERT_BATCH - 1) // UPSERT_BATCH
+            page_chunks_upserted = 0
+            for bi, i in enumerate(range(0, len(chunks), UPSERT_BATCH), 1):
                 batch = chunks[i : i + UPSERT_BATCH]
-                points = _build_points(batch, source_label=source_label)
-                client.upsert(
-                    collection_name=settings.qdrant_collection,
-                    points=points,
-                )
-                total_chunks += len(points)
+                try:
+                    points = _build_points(batch, source_label=source_label)
+                    client.upsert(
+                        collection_name=settings.qdrant_collection,
+                        points=points,
+                    )
+                    total_chunks += len(points)
+                    page_chunks_upserted += len(points)
+                except Exception:
+                    failed_batches += 1
+                    log.exception(
+                        "[job %s] upsert failed (page %d batch %d/%d) — skipping batch",
+                        job_id, page_idx, bi, total_batches,
+                    )
+
+            log.info(
+                "[job %s] (%d/%d) %s — %d chunks in %d batch(es)",
+                job_id, page_idx, len(targets), url,
+                page_chunks_upserted, total_batches,
+            )
 
             job_store.update(
                 job_id,
@@ -100,12 +142,19 @@ def run_ingest_job(
                 chunks_upserted=total_chunks,
             )
 
-        job_store.update(job_id, status="completed")
-        log.info(
-            "Ingest job %s done: %d pages, %d chunks.",
+        # Surface partial-failure counts even on success.
+        tail = ""
+        if failed_pages or failed_batches:
+            tail = f" ({failed_pages} failed pages, {failed_batches} failed batches)"
+
+        job_store.update(
             job_id,
-            total_scraped,
-            total_chunks,
+            status="completed",
+            error=tail.strip() or None,
+        )
+        log.info(
+            "Ingest job %s done: %d pages, %d chunks%s",
+            job_id, total_scraped, total_chunks, tail,
         )
 
     except Exception as e:

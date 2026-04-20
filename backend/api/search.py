@@ -1,7 +1,11 @@
+import logging
+
 from fastapi import APIRouter, HTTPException
 
 from backend.core.rag import answer_query
 from backend.schemas.search import SearchRequest, SearchResponse
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["search"])
 
@@ -16,4 +20,5 @@ def search(req: SearchRequest) -> SearchResponse:
             force_route=req.force_route,
         )
     except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=str(e))
+        log.exception("Search failed for query=%r", req.query)
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")

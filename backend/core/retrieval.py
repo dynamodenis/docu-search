@@ -16,7 +16,11 @@ def search_docs(query: str, top_k: int = 5, source_label: Optional[str] = None) 
     client = get_client()
 
     dense_q = list(m.dense.embed([query]))[0]
-    sparse_q = list(m.sparse.embed([query]))[0].as_object()
+    sparse_raw = list(m.sparse.embed([query]))[0].as_object()
+    sparse_q = models.SparseVector(
+        indices=sparse_raw["indices"].tolist(),
+        values=sparse_raw["values"].tolist(),
+    )
     colbert_q = list(m.colbert.embed([query]))[0]
 
     query_filter = None
@@ -34,12 +38,7 @@ def search_docs(query: str, top_k: int = 5, source_label: Optional[str] = None) 
         collection_name=settings.qdrant_collection,
         prefetch=[
             models.Prefetch(query=dense_q, using="dense", limit=50, filter=query_filter),
-            models.Prefetch(
-                query=models.SparseVector(**sparse_q),
-                using="sparse",
-                limit=50,
-                filter=query_filter,
-            ),
+            models.Prefetch(query=sparse_q, using="sparse", limit=50, filter=query_filter),
         ],
         query=colbert_q,
         using="colbert",

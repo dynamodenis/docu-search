@@ -16,6 +16,11 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s - %(message)s",
 )
+# httpx logs every request at INFO. Useful during debugging but noisy
+# during ingestion (one line per batch upsert). Bump to WARNING so only
+# real HTTP errors surface. Our own per-batch progress lives in
+# backend.jobs.ingest_job at INFO.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 log = logging.getLogger(__name__)
 
 

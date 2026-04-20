@@ -130,6 +130,57 @@ URL(s)  ──▶  scrape (requests + BeautifulSoup + markdownify)
         ──▶  Qdrant upsert (batches of 16)
 ```
 
+## Choosing the LLM
+
+Retrieval (dense + BM25 + ColBERT rerank) does the heavy lifting. By the
+time chunks land in the LLM's context they are already highly relevant,
+so the LLM's job is narrow: read 3–10 pre-filtered chunks, write a
+grounded answer, cite sources, and pick which tool to call (`search_docs`
+vs `search_web`). A small model handles that fine.
+
+**Default is `anthropic/claude-haiku-4.5`.** Cheap, fast, supports tool
+calling. Don't pay for Sonnet/Opus/GPT-4o unless you have evidence the
+small models are failing on your domain.
+
+Good cheap options (all support tool calling):
+
+| Model                          | Strength                                  |
+| ------------------------------ | ----------------------------------------- |
+| `anthropic/claude-haiku-4.5`   | balanced; solid citation discipline       |
+| `openai/gpt-4o-mini`           | cheapest mainstream; good structured out  |
+| `google/gemini-2.5-flash`      | fastest; long context                     |
+
+Switch globally with `OPENROUTER_MODEL` in `.env`, or per-request by
+passing `"model": "..."` in the `/search` body.
+
+Rule of thumb: **upgrade the retriever, not the generator**, until your
+eval shows the LLM itself is the bottleneck.
+
+### Why this is right for this setup
+
+The retrieval pipeline is doing the work that costs money in a naive RAG:
+
+- **Dense retrieval** narrows from the full corpus to 50 semantically relevant candidates.
+- **BM25** catches exact keyword matches dense misses.
+- **ColBERT rerank** picks the truly relevant ones out of the merged pool.
+
+By the time the LLM sees the context, you have handed it a small, clean,
+high-signal set of chunks. Its remaining job is basically "summarize
+these 5 paragraphs and cite them" — something Haiku / gpt-4o-mini do
+perfectly well.
+
+You would only want a frontier model if:
+
+- The retrieved chunks contradict each other and need complex reasoning to reconcile.
+- You're doing multi-hop reasoning (rare for doc Q&A).
+- You observe the small model hallucinating or dropping citations.
+
+None of those apply here. The `0.80 MRR` already tells you retrieval is
+good — the generator does not need to be smart, it needs to be faithful.
+Haiku 4.5 costs roughly 1/10th of Sonnet 4.5 for the same input/output.
+Over thousands of LinkedIn demo queries that's the difference between
+"free hobby project" and "surprise bill".
+
 ## Deploying
 
 - **Qdrant**: Qdrant Cloud — you already have this.

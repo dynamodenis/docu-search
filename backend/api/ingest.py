@@ -13,7 +13,10 @@ def ingest(req: IngestRequest, bg: BackgroundTasks) -> IngestResponse:
     if not req.urls and not req.sitemap_url:
         raise HTTPException(400, "Provide at least one URL or a sitemap_url.")
 
-    max_pages = min(req.max_pages or settings.ingest_max_pages, settings.ingest_max_pages)
+    # If the caller specified max_pages, respect it. Otherwise fall back
+    # to the server-wide default. The default is a convenience ceiling,
+    # not a hard cap — callers who know what they're doing can go higher.
+    max_pages = req.max_pages if req.max_pages else settings.ingest_max_pages
 
     # We record an upper bound on URLs now; the actual count after sitemap
     # expansion is updated once the job runs.

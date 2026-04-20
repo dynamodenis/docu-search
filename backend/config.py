@@ -4,10 +4,10 @@ Every other module should import `settings` from here rather than
 reading os.environ directly. Keeps config changes to one file.
 """
 from functools import lru_cache
-from typing import List
+from typing import Annotated, List
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -24,7 +24,7 @@ class Settings(BaseSettings):
 
     # OpenRouter
     openrouter_api_key: str
-    openrouter_model: str = "anthropic/claude-sonnet-4.5"
+    openrouter_model: str = "anthropic/claude-haiku-4.5"
     openrouter_site_url: str = ""
     openrouter_app_name: str = "docu-search"
 
@@ -34,10 +34,12 @@ class Settings(BaseSettings):
     # Backend
     backend_host: str = "0.0.0.0"
     backend_port: int = 8000
-    cors_origins: List[str] = Field(
+    # NoDecode prevents pydantic-settings from JSON-parsing the env value
+    # so our comma-splitting validator below can handle "a,b,c" format.
+    cors_origins: Annotated[List[str], NoDecode] = Field(
         default_factory=lambda: ["http://localhost:8501", "http://127.0.0.1:8501"]
     )
-    ingest_max_pages: int = 50
+    ingest_max_pages: int = 1000
     scraper_user_agent: str = "docu-search-bot/0.1"
     admin_token: str = ""
 

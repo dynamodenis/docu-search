@@ -7,7 +7,7 @@ import time
 import streamlit as st
 from dotenv import load_dotenv
 
-from frontend.api_client import APIClient
+from api_client import APIClient
 
 load_dotenv()
 
@@ -141,7 +141,12 @@ with ingest_tab:
             source_label = st.text_input("Source label", value="user_submitted")
         with col2:
             max_pages = st.number_input(
-                "Max pages", min_value=1, max_value=500, value=50, step=5
+                "Max pages",
+                min_value=1,
+                max_value=10000,
+                value=500,
+                step=50,
+                help="Upper bound on pages to crawl from your sitemap / URL list.",
             )
         submitted = st.form_submit_button("Start ingestion")
 
@@ -162,11 +167,17 @@ with ingest_tab:
             except Exception as e:  # noqa: BLE001
                 st.error(f"Ingest failed: {e}")
 
-    # Poll status of the current job.
+    # Poll status of the current job with gentle backoff so we don't
+    # hammer the backend: 2s → 3s → 5s → 8s → cap at 8s thereafter.
+    # Upper bound ~30 min total, which is plenty for a multi-hundred-page job.
     if st.session_state.get("job_id"):
         job_id = st.session_state["job_id"]
         placeholder = st.empty()
-        for _ in range(300):  # ~10 min at 2s poll
+        delay = 2
+        elapsed = 0
+        max_elapsed = 60 * 30  # 30 minutes
+
+        while elapsed < max_elapsed:
             try:
                 job = api.job(job_id)
             except Exception as e:  # noqa: BLE001
@@ -186,4 +197,7 @@ with ingest_tab:
                 )
             if job["status"] in ("completed", "failed"):
                 break
-            time.sleep(2)
+
+            time.sleep(delay)
+            elapsed += delay
+            delay = min(delay + 1, 8)  # grow 2 → 3 → 4 … → 8 then hold
