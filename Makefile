@@ -1,4 +1,5 @@
-.PHONY: install bootstrap finalize backend frontend dev clean
+.PHONY: install bootstrap finalize backend frontend dev clean \
+        docker-build docker-up docker-down docker-logs
 
 install:
 	python -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
@@ -23,3 +24,16 @@ dev:
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	rm -rf .pytest_cache .ruff_cache .mypy_cache
+
+# --- Docker -------------------------------------------------------------
+docker-build:
+	docker compose build
+
+docker-up:
+	docker compose up -d
+
+docker-down:
+	docker compose down
+
+docker-logs:
+	docker compose logs -f

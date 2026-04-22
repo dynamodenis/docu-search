@@ -1,3 +1,13 @@
+---
+title: docu-search
+emoji: 🔍
+colorFrom: indigo
+colorTo: blue
+sdk: docker
+app_port: 8000
+pinned: false
+---
+
 # docu-search
 
 Hybrid RAG over documentation with optional live web search.
@@ -184,11 +194,37 @@ Over thousands of LinkedIn demo queries that's the difference between
 ## Deploying
 
 - **Qdrant**: Qdrant Cloud — you already have this.
-- **Backend**: Railway, Fly.io, or Render free tier. The first `/search`
-  call in a cold process will take ~30s while FastEmbed loads models.
-  Consider a `preload` hook or keeping the dyno warm.
-- **Frontend**: Streamlit Community Cloud. Point `BACKEND_URL` at the
-  deployed API. Swap for Next.js later when you want a proper API product.
+- **Backend**: Hugging Face Spaces (Docker SDK) — free, 16 GB RAM, fits
+  the embedding stack. See below.
+- **Frontend**: Streamlit Community Cloud — free, points at the Space URL.
+
+### Backend → Hugging Face Spaces
+
+1. Create a new Space → SDK `Docker` → link to your GitHub repo (or push
+   this repo directly to the Space remote). HF reads the YAML header at
+   the top of this file for title/port/etc.
+2. Settings → **Repository secrets** → add: `QDRANT_URL`,
+   `QDRANT_API_KEY`, `QDRANT_COLLECTION`, `OPENROUTER_API_KEY`,
+   `OPENROUTER_MODEL`, `TAVILY_API_KEY`, `ADMIN_TOKEN`, `CORS_ORIGINS`.
+   Set `CORS_ORIGINS` to your Streamlit Cloud URL
+   (e.g. `https://<you>-docu-search.streamlit.app`).
+3. The first build takes ~5 min (it pre-bakes the three embedding models
+   into the image — that's why your cold starts after that are fast).
+4. Your backend is live at `https://<user>-<space>.hf.space`.
+
+Notes:
+- Free Spaces sleep after ~48h idle. First request after sleep cold-starts
+  the container (~30s). BackgroundTasks state (the ingest job store) is
+  in-memory, so sleeping mid-ingest loses job status — run bulk ingests
+  deliberately.
+- The Space disk is ephemeral; that's fine because Qdrant holds all data.
+
+### Frontend → Streamlit Community Cloud
+
+1. Point at `frontend/app.py`.
+2. Secrets (`Settings → Secrets`): `BACKEND_URL="https://<user>-<space>.hf.space"`.
+3. Deploy. Copy the URL it gives you back into the backend's
+   `CORS_ORIGINS` secret on HF, then restart the Space.
 
 ## What's next
 
