@@ -82,6 +82,97 @@ python -m scripts.finalize_collection
 
 Or in one shot with `make dev` (runs both).
 
+## Self-hosting the backend
+
+The backend is a standalone HTTP service — FastAPI behind uvicorn, with
+plain JSON endpoints (`/search`, `/ingest`, `/jobs/{id}`, `/admin/*`).
+The Streamlit app in `frontend/` is just one consumer of that API; it's
+a thin client that POSTs to `/search` and `/ingest`.
+
+**This section talks about the backend in isolation on purpose.** If
+you'd rather build your own UI — Next.js, SvelteKit, a Slack bot, a CLI,
+another agent, a Raycast extension — skip the bundled frontend entirely
+and point your client at the API. The backend is the product; the
+frontend is interchangeable.
+
+### Option A: Docker Compose (recommended)
+
+```bash
+cp .env.example .env            # fill in QDRANT_*, OPENROUTER_API_KEY, TAVILY_API_KEY
+docker compose up --build backend
+#   → http://localhost:8000/docs  (Swagger UI)
+```
+
+`docker compose up backend` starts only the API. Drop the service name
+to also bring up the bundled Streamlit frontend.
+
+### Option B: Bare metal
+
+```bash
+cp .env.example .env
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python -m scripts.bootstrap_collection      # one-time: create the Qdrant collection
+uvicorn backend.main:app --host 0.0.0.0 --port 8000
+```
+
+### Minimum env vars to run the backend
+
+| Variable             | Required | Purpose                                     |
+| -------------------- | -------- | ------------------------------------------- |
+| `QDRANT_URL`         | yes      | Qdrant Cloud cluster URL                    |
+| `QDRANT_API_KEY`     | yes      | Qdrant Cloud API key                        |
+| `QDRANT_COLLECTION`  | yes      | Collection name (e.g. `docs_search`)        |
+| `OPENROUTER_API_KEY` | yes      | LLM gateway key                             |
+| `OPENROUTER_MODEL`   | yes      | Default model — must support tool calling   |
+| `ADMIN_TOKEN`        | yes      | Shared secret for `/admin/*` endpoints      |
+| `TAVILY_API_KEY`     | optional | Only needed if your callers use `search_web`|
+| `CORS_ORIGINS`       | optional | Set this if a browser-based client calls in |
+
+### Calling the API
+
+Ingest some docs (returns a `job_id` immediately; the scrape runs in the background):
+
+```bash
+curl -X POST http://localhost:8000/ingest \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sitemap_url": "https://qdrant.tech/sitemap.xml",
+    "source_label": "qdrant_docs",
+    "max_pages": 50
+  }'
+# → {"job_id": "abc123", "status": "queued"}
+```
+
+Poll the job:
+
+```bash
+curl http://localhost:8000/jobs/abc123
+# → {"status": "running", "pages_done": 12, "pages_total": 50, ...}
+```
+
+After your first bulk ingest, finalize the index once (builds the HNSW
+graph in one pass — see Collection lifecycle below):
+
+```bash
+curl -X POST http://localhost:8000/admin/finalize \
+  -H "X-Admin-Token: $ADMIN_TOKEN"
+```
+
+Search:
+
+```bash
+curl -X POST http://localhost:8000/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "how do I configure HNSW for better recall?",
+    "top_k": 5
+  }'
+```
+
+Response includes the grounded answer, citations, and which tool the LLM
+picked (`search_docs`, `search_web`, or both).
+
 ## Collection lifecycle
 
 ```
