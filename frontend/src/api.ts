@@ -7,8 +7,14 @@ import type {
   SourcesResponse,
 } from "./types";
 
+// VITE_BACKEND_URL (a build-time var) wins when set — e.g. point at a local
+// backend during dev via .env.local. Otherwise fall back to the deployed
+// Hugging Face Space so production builds work with no Cloudflare config.
+// Users can still override either at runtime via the backend-URL field (stored
+// in localStorage), so this is just the default, not a hard pin.
 const DEFAULT_BACKEND_URL =
-  import.meta.env.VITE_BACKEND_URL?.replace(/\/$/, "") || "http://localhost:8000";
+  import.meta.env.VITE_BACKEND_URL?.replace(/\/$/, "") ||
+  "https://dynamodenis254-docu-search.hf.space";
 
 export function getStoredBackendUrl() {
   return localStorage.getItem("docu-search.backend-url") || DEFAULT_BACKEND_URL;
