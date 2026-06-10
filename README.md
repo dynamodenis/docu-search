@@ -314,7 +314,8 @@ Over thousands of LinkedIn demo queries that's the difference between
 - **Qdrant**: Qdrant Cloud — you already have this.
 - **Backend**: Hugging Face Spaces (Docker SDK) — free, 16 GB RAM, fits
   the embedding stack. See below.
-- **Frontend**: Streamlit Community Cloud — free, points at the Space URL.
+- **Frontend**: Cloudflare (Workers static assets) — free, global CDN,
+  builds the Vite/React app and points at the Space URL.
 
 ### Backend → Hugging Face Spaces
 
@@ -324,8 +325,8 @@ Over thousands of LinkedIn demo queries that's the difference between
 2. Settings → **Repository secrets** → add: `QDRANT_URL`,
    `QDRANT_API_KEY`, `QDRANT_COLLECTION`, `OPENROUTER_API_KEY`,
    `OPENROUTER_MODEL`, `TAVILY_API_KEY`, `ADMIN_TOKEN`, `CORS_ORIGINS`.
-   Set `CORS_ORIGINS` to your Streamlit Cloud URL
-   (e.g. `https://<you>-docu-search.streamlit.app`).
+   Set `CORS_ORIGINS` to your frontend URL
+   (e.g. `https://docu-search.<you>.workers.dev`).
 3. The first build takes ~5 min (it pre-bakes the three embedding models
    into the image — that's why your cold starts after that are fast).
 4. Your backend is live at `https://<user>-<space>.hf.space`.
@@ -337,12 +338,26 @@ Notes:
   deliberately.
 - The Space disk is ephemeral; that's fine because Qdrant holds all data.
 
-### Frontend → Streamlit Community Cloud
+### Frontend → Cloudflare
 
-1. Point at `frontend/app.py`.
-2. Secrets (`Settings → Secrets`): `BACKEND_URL="https://<user>-<space>.hf.space"`.
-3. Deploy. Copy the URL it gives you back into the backend's
-   `CORS_ORIGINS` secret on HF, then restart the Space.
+The frontend is a static Vite/React SPA, so any static host works
+(Cloudflare, Vercel, Netlify). These steps are for Cloudflare's Git
+integration.
+
+1. Cloudflare dashboard → Workers & Pages → create a project from your
+   GitHub repo. Build settings:
+   - **Root directory:** `frontend`
+   - **Build command:** `npm run build`
+   - **Deploy command:** `npx wrangler deploy` (this promotes the new
+     build to production; `wrangler versions upload` only stages it).
+2. **Build variable** (optional): `VITE_BACKEND_URL=https://<user>-<space>.hf.space`.
+   It's read at *build* time and baked into the bundle — set it under the
+   build config, not the runtime "Variables and secrets" panel. If unset,
+   the app falls back to the Space URL hardcoded in `frontend/src/api.ts`,
+   and users can repoint it live via the backend-URL field (localStorage).
+3. Push to `main` → Cloudflare builds and deploys automatically. Copy the
+   deployed URL into the backend's `CORS_ORIGINS` secret on HF, then
+   restart the Space.
 
 ## What's next
 
