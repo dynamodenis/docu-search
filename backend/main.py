@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.api import admin, health, ingest, search
+from backend.api import admin, health, ingest, search, sources
 from backend.config import settings
 from backend.core.embeddings import load_models
 from backend.core.qdrant_client import ensure_collection
@@ -52,6 +52,7 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(search.router)
 app.include_router(ingest.router)
+app.include_router(sources.router)
 app.include_router(admin.router)
 
 

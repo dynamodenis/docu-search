@@ -10,6 +10,9 @@ class SearchRequest(BaseModel):
     model: Optional[str] = None
     # Force a specific retrieval route. None = let the LLM decide via tool-use.
     force_route: Optional[Literal["docs", "web", "both"]] = None
+    # Restrict docs retrieval to a single ingested source label (e.g.
+    # "qdrant_docs"). Only affects the docs route; web search is unfiltered.
+    source_label: Optional[str] = None
 
 
 class Source(BaseModel):

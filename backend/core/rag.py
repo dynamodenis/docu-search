@@ -97,13 +97,13 @@ TOOLS = [
 ]
 
 
-def _execute_tool(name: str, args: dict) -> List[Source]:
+def _execute_tool(name: str, args: dict, source_label: Optional[str] = None) -> List[Source]:
     query = args.get("query", "").strip()
     top_k = int(args.get("top_k", 5))
     if not query:
         return []
     if name == "search_docs":
-        return search_docs(query, top_k=top_k)
+        return search_docs(query, top_k=top_k, source_label=source_label)
     if name == "search_web":
         return search_web(query, top_k=top_k)
     log.warning("Unknown tool requested: %s", name)
@@ -129,18 +129,29 @@ def answer_query(
     top_k: int = 5,
     model: Optional[str] = None,
     force_route: Optional[str] = None,
+    source_label: Optional[str] = None,
     max_iters: int = 4,
 ) -> SearchResponse:
-    """Run the full tool-use RAG loop and return the final answer."""
+    """Run the full tool-use RAG loop and return the final answer.
+
+    When source_label is set, docs retrieval is restricted to that ingested
+    source. We also force the docs route in that case so the filter is
+    honoured even if the LLM would otherwise have skipped doc search.
+    """
     llm = get_llm()
     model_name = model or settings.openrouter_model
     collected: List[Source] = []
     routes_used: set[str] = set()
 
+    # A source-label filter only makes sense against the docs collection, so
+    # constrain the route to docs (or keep web alongside if both were asked).
+    if source_label:
+        force_route = "both" if force_route == "both" else "docs"
+
     # If the caller forced a route we skip tool-use and do it directly.
     if force_route in ("docs", "web", "both"):
         if force_route in ("docs", "both"):
-            docs = search_docs(query, top_k=top_k)
+            docs = search_docs(query, top_k=top_k, source_label=source_label)
             collected.extend(docs)
             if docs:
                 routes_used.add("docs")
@@ -220,7 +231,7 @@ def answer_query(
                 args = json.loads(tc.function.arguments or "{}")
             except json.JSONDecodeError:
                 args = {}
-            new_sources = _execute_tool(tc.function.name, args)
+            new_sources = _execute_tool(tc.function.name, args, source_label=source_label)
             offset = len(collected)
             collected.extend(new_sources)
             if new_sources:

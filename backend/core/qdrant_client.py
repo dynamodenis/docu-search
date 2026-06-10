@@ -145,3 +145,55 @@ def finalize_indexing(wait: bool = True, poll_seconds: float = 3.0) -> None:
             return
         log.info("Status: %s — indexing in progress...", status)
         time.sleep(poll_seconds)
+
+
+def list_source_labels() -> list[dict]:
+    """Return the distinct ingested source labels with chunk counts.
+
+    Uses Qdrant's facet API on the `source_label` keyword index (cheap —
+    no full scan). Each entry is {"label": str, "chunks": int}, sorted by
+    count descending. Falls back to a payload-only scroll if facet is
+    unavailable (e.g. an older Qdrant server), and returns [] if the
+    collection does not exist yet.
+    """
+    client = get_client()
+    name = settings.qdrant_collection
+
+    try:
+        result = client.facet(collection_name=name, key="source_label", limit=1000)
+        labels = [
+            {"label": str(hit.value), "chunks": hit.count}
+            for hit in result.hits
+            if hit.value
+        ]
+    except Exception as e:  # noqa: BLE001
+        log.warning("facet() unavailable (%s); falling back to scroll.", e)
+        labels = _scroll_source_labels(client, name)
+
+    labels.sort(key=lambda item: item["chunks"], reverse=True)
+    return labels
+
+
+def _scroll_source_labels(client: QdrantClient, name: str) -> list[dict]:
+    """Fallback: scroll payload-only and tally source_label in Python."""
+    counts: dict[str, int] = {}
+    offset = None
+    try:
+        while True:
+            points, offset = client.scroll(
+                collection_name=name,
+                with_payload=["source_label"],
+                with_vectors=False,
+                limit=512,
+                offset=offset,
+            )
+            for point in points:
+                label = (point.payload or {}).get("source_label")
+                if label:
+                    counts[label] = counts.get(label, 0) + 1
+            if offset is None:
+                break
+    except Exception as e:  # noqa: BLE001
+        log.warning("Could not list source labels: %s", e)
+        return []
+    return [{"label": label, "chunks": count} for label, count in counts.items()]

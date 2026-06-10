@@ -18,6 +18,7 @@ def search(req: SearchRequest) -> SearchResponse:
             top_k=req.top_k,
             model=req.model,
             force_route=req.force_route,
+            source_label=req.source_label,
         )
     except Exception as e:  # noqa: BLE001
         log.exception("Search failed for query=%r", req.query)

@@ -22,6 +22,16 @@ export type SearchResponse = {
   model: string;
 };
 
+export type SourceLabel = {
+  label: string;
+  chunks: number;
+};
+
+export type SourcesResponse = {
+  sources: SourceLabel[];
+  total_chunks: number;
+};
+
 export type IngestResponse = {
   job_id: string;
   status: "queued";

@@ -17,15 +17,40 @@ import {
   UploadCloud,
   XCircle,
 } from "lucide-react";
+
+const REPO_URL = "https://github.com/dynamodenis/docu-search";
+
+// lucide deprecated its brand icons, so inline the official GitHub mark.
+function GithubIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M12 .5C5.37.5 0 5.87 0 12.5c0 5.3 3.44 9.8 8.21 11.39.6.11.82-.26.82-.58 0-.29-.01-1.05-.02-2.06-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.21.09 1.85 1.24 1.85 1.24 1.07 1.84 2.81 1.31 3.5 1 .11-.78.42-1.31.76-1.61-2.67-.3-5.47-1.34-5.47-5.95 0-1.32.47-2.39 1.24-3.23-.13-.31-.54-1.53.11-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6.01 0c2.29-1.55 3.3-1.23 3.3-1.23.65 1.65.24 2.87.12 3.18.77.84 1.23 1.91 1.23 3.23 0 4.62-2.81 5.64-5.49 5.94.43.37.81 1.1.81 2.22 0 1.61-.01 2.9-.01 3.29 0 .32.21.7.82.58A12.01 12.01 0 0 0 24 12.5C24 5.87 18.63.5 12 .5z" />
+    </svg>
+  );
+}
 import {
   getHealth,
   getJob,
+  getSources,
   getStoredBackendUrl,
   searchDocs,
   startIngest,
   storeBackendUrl,
 } from "./api";
-import type { HealthResponse, JobState, RouteMode, SearchResponse, Source } from "./types";
+import type {
+  HealthResponse,
+  JobState,
+  RouteMode,
+  SearchResponse,
+  Source,
+  SourceLabel,
+} from "./types";
 import "./styles.css";
 
 const routeOptions: Array<{ label: string; value: "auto" | RouteMode }> = [
@@ -58,8 +83,13 @@ function App() {
   const [jobId, setJobId] = useState("");
   const [job, setJob] = useState<JobState | null>(null);
   const [isIngesting, setIsIngesting] = useState(false);
-  const [activeView, setActiveView] = useState<"chat" | "ingest">("chat");
+  const [activeView, setActiveView] = useState<"chat" | "ingest" | "sources">("chat");
   const [activeSourceTab, setActiveSourceTab] = useState<"docs" | "web">("docs");
+
+  const [dataSources, setDataSources] = useState<SourceLabel[]>([]);
+  const [sourcesError, setSourcesError] = useState("");
+  const [isLoadingSources, setIsLoadingSources] = useState(false);
+  const [sourceFilter, setSourceFilter] = useState<string | null>(null);
 
   async function refreshHealth(url = backendUrl) {
     setIsCheckingHealth(true);
@@ -75,8 +105,23 @@ function App() {
     }
   }
 
+  async function refreshSources(url = backendUrl) {
+    setIsLoadingSources(true);
+    setSourcesError("");
+    try {
+      const result = await getSources(url);
+      setDataSources(result.sources);
+    } catch (error) {
+      setDataSources([]);
+      setSourcesError(error instanceof Error ? error.message : "Could not load sources.");
+    } finally {
+      setIsLoadingSources(false);
+    }
+  }
+
   useEffect(() => {
     void refreshHealth();
+    void refreshSources();
   }, [backendUrl]);
 
   useEffect(() => {
@@ -90,7 +135,12 @@ function App() {
         const nextJob = await getJob(backendUrl, jobId);
         if (cancelled) return;
         setJob(nextJob);
-        if (nextJob.status === "completed" || nextJob.status === "failed") return;
+        if (nextJob.status === "completed" || nextJob.status === "failed") {
+          // New chunks just landed in Qdrant — refresh the data-source list
+          // so the newly-ingested label (and its count) shows up.
+          if (nextJob.status === "completed") void refreshSources();
+          return;
+        }
         timer = window.setTimeout(() => void poll(Math.min(delay + 1000, 8000)), delay);
       } catch (error) {
         if (!cancelled) {
@@ -133,6 +183,7 @@ function App() {
         top_k: topK,
         model: model.trim() || undefined,
         force_route: route === "auto" ? undefined : route,
+        source_label: sourceFilter || undefined,
       });
       setSearchResult(result);
     } catch (error) {
@@ -140,6 +191,12 @@ function App() {
     } finally {
       setIsSearching(false);
     }
+  }
+
+  function filterBySource(label: string) {
+    // Scope subsequent searches to this ingested source and jump to chat.
+    setSourceFilter(label);
+    setActiveView("chat");
   }
 
   async function submitIngest(event: FormEvent<HTMLFormElement>) {
@@ -248,16 +305,18 @@ function App() {
               placeholder="openai/gpt-4o-mini"
             />
           </label>
-          <label>
+          <label className="pt-10">
             <span>Top K sources</span>
-            <input
-              type="range"
-              min="1"
-              max="20"
-              value={topK}
-              onChange={(event) => setTopK(Number(event.target.value))}
-            />
-            <strong>{topK}</strong>
+            <div className="range-row">
+              <input
+                type="range"
+                min="1"
+                max="20"
+                value={topK}
+                onChange={(event) => setTopK(Number(event.target.value))}
+              />
+              <strong className="range-value">{topK}</strong>
+            </div>
           </label>
           <div className="field-heading">Retrieval route</div>
           <div className="segmented" aria-label="Retrieval route">
@@ -273,16 +332,11 @@ function App() {
             ))}
           </div>
         </section>
-
-        <div className="powered-by">
-          <Database size={16} />
-          <span>Powered by</span>
-          <strong>Qdrant</strong>
-        </div>
       </aside>
 
       <section className="workspace">
-        <nav className="view-tabs" aria-label="Workspace views">
+        <header className="workspace-top">
+          <nav className="view-tabs" aria-label="Workspace views">
           <button
             type="button"
             className={activeView === "chat" ? "active" : ""}
@@ -300,7 +354,40 @@ function App() {
             Ingest
             {jobId && <span className="tab-dot" />}
           </button>
-        </nav>
+          <button
+            type="button"
+            className={activeView === "sources" ? "active" : ""}
+            onClick={() => setActiveView("sources")}
+          >
+            <Database size={17} />
+            Data sources
+            {dataSources.length > 0 && <span className="tab-count">{dataSources.length}</span>}
+          </button>
+          </nav>
+
+          <div className="top-actions">
+            <a
+              className="github-link"
+              href={REPO_URL}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="View source on GitHub"
+              title="View source on GitHub"
+            >
+              <GithubIcon size={18} />
+            </a>
+            <a
+              className="powered-by"
+              href="https://qdrant.tech"
+              target="_blank"
+              rel="noreferrer"
+            >
+              <Database size={16} />
+              <span>Powered by</span>
+              <strong>Qdrant</strong>
+            </a>
+          </div>
+        </header>
 
         {activeView === "chat" && (
           <>
@@ -317,6 +404,23 @@ function App() {
                 Search
               </button>
             </form>
+
+            {sourceFilter && (
+              <div className="filter-chip">
+                <Database size={15} />
+                <span>
+                  Scoped to <strong>{sourceFilter}</strong>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSourceFilter(null)}
+                  aria-label="Clear source filter"
+                  title="Clear source filter"
+                >
+                  <XCircle size={15} />
+                </button>
+              </div>
+            )}
 
             {searchError && <div className="banner error">{searchError}</div>}
 
@@ -451,6 +555,64 @@ function App() {
 
             {ingestError && <div className="banner error">{ingestError}</div>}
             {jobId && <JobCard jobId={jobId} job={job} />}
+          </section>
+        )}
+
+        {activeView === "sources" && (
+          <section className="ingest-section">
+            <div className="section-heading">
+              <Database size={21} />
+              <div>
+                <h2>Data sources</h2>
+                <p>Everything currently indexed in Qdrant, grouped by the label it was ingested under.</p>
+              </div>
+              <button
+                className="icon-button light"
+                type="button"
+                onClick={() => void refreshSources()}
+                aria-label="Refresh data sources"
+                title="Refresh data sources"
+              >
+                <RefreshCw size={16} className={isLoadingSources ? "spin" : ""} />
+              </button>
+            </div>
+
+            {sourcesError && <div className="banner error">{sourcesError}</div>}
+
+            {!sourcesError && dataSources.length === 0 ? (
+              <div className="empty-state">
+                <Database size={40} />
+                <h2>{isLoadingSources ? "Loading sources..." : "No sources indexed yet"}</h2>
+                <p>Ingest some docs and they'll show up here, grouped by source label.</p>
+              </div>
+            ) : (
+              <div className="source-list">
+                {dataSources.map((source) => {
+                  const active = sourceFilter === source.label;
+                  return (
+                    <button
+                      type="button"
+                      className={`source-row${active ? " active" : ""}`}
+                      key={source.label}
+                      onClick={() => filterBySource(source.label)}
+                      title={`Search only ${source.label}`}
+                    >
+                      <span className="source-badge">
+                        <Database size={16} />
+                      </span>
+                      <div className="source-meta">
+                        <strong>{source.label}</strong>
+                        <span>{source.chunks.toLocaleString()} chunks</span>
+                      </div>
+                      <span className="source-action">
+                        {active ? "Filtering" : "Search this"}
+                        <Search size={14} />
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </section>
         )}
       </section>

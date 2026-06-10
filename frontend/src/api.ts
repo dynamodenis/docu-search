@@ -4,6 +4,7 @@ import type {
   JobState,
   RouteMode,
   SearchResponse,
+  SourcesResponse,
 } from "./types";
 
 const DEFAULT_BACKEND_URL =
@@ -57,6 +58,7 @@ export function searchDocs(
     top_k: number;
     model?: string;
     force_route?: RouteMode;
+    source_label?: string;
   },
 ) {
   return request<SearchResponse>(backendUrl, "/search", {
@@ -77,6 +79,12 @@ export function startIngest(
   return request<IngestResponse>(backendUrl, "/ingest", {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+export function getSources(backendUrl: string) {
+  return request<SourcesResponse>(backendUrl, "/sources", {
+    method: "GET",
   });
 }
 
