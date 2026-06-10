@@ -1,25 +1,25 @@
-# docu-search frontend — Streamlit UI that calls the backend.
+# docu-search frontend — React UI that calls the FastAPI backend.
 #
 # Build from the REPO ROOT:
 #     docker build -f frontend/Dockerfile -t docu-search-frontend .
-FROM python:3.11-slim
+FROM node:20-alpine AS build
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    STREAMLIT_SERVER_HEADLESS=true \
-    STREAMLIT_SERVER_ADDRESS=0.0.0.0 \
-    STREAMLIT_SERVER_PORT=8501 \
-    STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+ARG VITE_BACKEND_URL=http://localhost:8000
+ENV VITE_BACKEND_URL=$VITE_BACKEND_URL
 
 WORKDIR /app
 
-COPY frontend/requirements.txt ./
-RUN pip install -r requirements.txt
+COPY frontend/package*.json ./
+RUN npm install
 
-COPY frontend ./frontend
+COPY frontend ./
+RUN npm run build
 
-EXPOSE 8501
+FROM nginx:1.27-alpine
 
-CMD ["streamlit", "run", "frontend/app.py"]
+COPY --from=build /app/dist /usr/share/nginx/html
+COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 5173
+
+CMD ["nginx", "-g", "daemon off;"]

@@ -25,8 +25,8 @@ by Denis Mbugua.
 
 ```
 ┌────────────────────┐    HTTP     ┌────────────────────────────┐
-│  Streamlit (UI)    │ ──────────▶ │  FastAPI backend           │
-│  frontend/app.py   │             │                            │
+│  React + TS (UI)   │ ──────────▶ │  FastAPI backend           │
+│  frontend/src      │             │                            │
 └────────────────────┘             │  POST /search              │
                                    │  POST /ingest  (bg task)   │
                                    │  GET  /jobs/{id}           │
@@ -64,6 +64,7 @@ cp .env.example .env            # then fill in real keys
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+cd frontend && npm install && cd ..
 
 # 2. Create the Qdrant collection (idempotent)
 python -m scripts.bootstrap_collection
@@ -73,8 +74,8 @@ uvicorn backend.main:app --reload
 #    → http://localhost:8000/docs
 
 # 4. Run frontend (new terminal)
-streamlit run frontend/app.py
-#    → http://localhost:8501
+npm --prefix frontend run dev
+#    → http://localhost:5173
 
 # 5. After your initial bulk ingest (see below), run ONCE:
 python -m scripts.finalize_collection
@@ -86,11 +87,11 @@ Or in one shot with `make dev` (runs both).
 
 The backend is a standalone HTTP service — FastAPI behind uvicorn, with
 plain JSON endpoints (`/search`, `/ingest`, `/jobs/{id}`, `/admin/*`).
-The Streamlit app in `frontend/` is just one consumer of that API; it's
-a thin client that POSTs to `/search` and `/ingest`.
+The React app in `frontend/` is just one consumer of that API; it is a
+typed browser client that POSTs to `/search` and `/ingest`.
 
 **This section talks about the backend in isolation on purpose.** If
-you'd rather build your own UI — Next.js, SvelteKit, a Slack bot, a CLI,
+you'd rather build another UI — Next.js, SvelteKit, a Slack bot, a CLI,
 another agent, a Raycast extension — skip the bundled frontend entirely
 and point your client at the API. The backend is the product; the
 frontend is interchangeable.
@@ -104,7 +105,33 @@ docker compose up --build backend
 ```
 
 `docker compose up backend` starts only the API. Drop the service name
-to also bring up the bundled Streamlit frontend.
+to also bring up the bundled React frontend.
+
+### React frontend
+
+The frontend lives in `frontend/` and uses Vite, React, and TypeScript.
+
+```bash
+cd frontend
+cp .env.example .env.local
+# Set this to your local FastAPI URL or your Hugging Face backend URL.
+# VITE_BACKEND_URL=https://your-space-name.hf.space
+npm install
+npm run dev
+# → http://localhost:5173
+```
+
+You can also change the backend URL from the frontend's sidebar. The app
+stores that value in `localStorage`, which is convenient when your FastAPI
+backend is already deployed on Hugging Face and the React app is hosted
+elsewhere.
+
+For a browser frontend hosted on a different domain, set the backend's
+`CORS_ORIGINS` env var to include that frontend origin:
+
+```bash
+CORS_ORIGINS=https://your-frontend.example.com,http://localhost:5173
+```
 
 ### Option B: Bare metal
 

@@ -3,7 +3,7 @@
 #
 # Usage:
 #     docker compose up --build
-#     # frontend → http://localhost:8501
+#     # frontend → http://localhost:5173
 #     # backend  → http://localhost:8000
 
 services:
@@ -16,21 +16,21 @@ services:
       BACKEND_HOST: 0.0.0.0
       BACKEND_PORT: "8000"
       # Allow the in-compose frontend container to call us.
-      CORS_ORIGINS: http://localhost:8501,http://127.0.0.1:8501,http://frontend:8501
+      CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173,http://frontend:5173
     ports:
       - "8000:8000"
     restart: unless-stopped
 
   frontend:
+    env_file: .env
     build:
       context: .
       dockerfile: frontend/Dockerfile
-    env_file: .env
-    environment:
-      # Inside the compose network the backend is reachable by service name.
-      BACKEND_URL: http://backend:8000
+      args:
+        # Browser-side URL. Use your Hugging Face backend URL here when deploying elsewhere.
+        VITE_BACKEND_URL: http://localhost:8000
     ports:
-      - "8501:8501"
+      - "5173:5173"
     depends_on:
       - backend
     restart: unless-stopped

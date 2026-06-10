@@ -37,7 +37,12 @@ class Settings(BaseSettings):
     # NoDecode prevents pydantic-settings from JSON-parsing the env value
     # so our comma-splitting validator below can handle "a,b,c" format.
     cors_origins: Annotated[List[str], NoDecode] = Field(
-        default_factory=lambda: ["http://localhost:8501", "http://127.0.0.1:8501"]
+        default_factory=lambda: [
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://localhost:4173",
+            "http://127.0.0.1:4173",
+        ]
     )
     ingest_max_pages: int = 1000
     scraper_user_agent: str = "docu-search-bot/0.1"

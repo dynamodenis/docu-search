@@ -15,7 +15,7 @@ backend:
 	uvicorn backend.main:app --reload --host $${BACKEND_HOST:-0.0.0.0} --port $${BACKEND_PORT:-8000}
 
 frontend:
-	streamlit run frontend/app.py
+	cd frontend && npm run dev
 
 # Run backend + frontend in parallel (requires GNU make)
 dev:
